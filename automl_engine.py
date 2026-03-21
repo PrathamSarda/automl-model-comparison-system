@@ -44,6 +44,23 @@ def auto_clean_data(df, target_column):
     X = df.drop(columns=[target_column])
     y = df[target_column]
 
+    df = df.copy()
+
+# ---- Drop high-cardinality columns ----
+    high_card_cols = [
+        col for col in df.columns
+        if df[col].nunique() > 100
+    ]
+
+    # Do not drop target
+    high_card_cols = [col for col in high_card_cols if col != target_column]
+
+    df.drop(columns=high_card_cols, inplace=True)
+
+    # ---- Encode target if categorical ----
+    if y.dtype == "object":
+        y = y.astype("category").cat.codes
+
     categorical_cols = X.select_dtypes(include=['object', 'category']).columns.tolist()
     numerical_cols = X.select_dtypes(exclude=['object', 'category']).columns.tolist()
 
@@ -118,7 +135,6 @@ def train_base_models(X, y, preprocessor):
         ),
 
         "XGBoost": XGBClassifier(
-            use_label_encoder=False,
             eval_metric="logloss",
             max_depth=5,
             n_estimators=100,
@@ -278,7 +294,7 @@ def tune_top_models(X, y, preprocessor, base_results):
         grid_search = RandomizedSearchCV(
             pipeline,
             config["params"],
-            n_iter=8,
+            n_iter=4,
             cv=3,
             scoring="roc_auc",
             n_jobs=-1,

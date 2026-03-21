@@ -70,7 +70,11 @@ if uploaded_file is not None:
     # ------------------------------
     # Target Selection
     # ------------------------------
-    possible_targets = [col for col in df.columns if df[col].nunique() <= 20]
+    possible_targets = [
+    col for col in df.columns
+    if df[col].nunique() <= 20 and df[col].nunique() > 1
+]
+    st.info("Select a target column with limited unique values (like 0/1).")
 
     target_column = st.selectbox(
         "Select Target Column",
@@ -107,6 +111,10 @@ if uploaded_file is not None:
 
         st.pyplot(fig)
 
+    st.subheader("Debug Info")
+
+    st.write("Columns:", df.columns.tolist())
+    st.write("Unique Values:", df.nunique())
 
     # ------------------------------
     # Run AutoML Pipeline
