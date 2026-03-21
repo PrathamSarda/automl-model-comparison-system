@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 
-from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.model_selection import RandomizedSearchCV, train_test_split    
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
@@ -48,7 +48,17 @@ def auto_clean_data(df, target_column):
     numerical_cols = X.select_dtypes(exclude=['object', 'category']).columns.tolist()
 
     return X, y, categorical_cols, numerical_cols
+#--------------------------------------------------
+# Detect problem type
+#--------------------------------------------------
+def detect_problem_type(y):
 
+    if y.nunique() == 2:
+        return "binary_classification"
+    elif y.nunique() > 2 and y.dtype in ['object', 'category']:
+        return "multiclass_classification"
+    else:
+        return "regression"
 
 # --------------------------------------------------
 # Preprocessing Pipeline
@@ -62,7 +72,7 @@ def build_preprocessor(categorical_cols, numerical_cols):
 
     categorical_pipeline = Pipeline([
         ('imputer', SimpleImputer(strategy='most_frequent')),
-        ('encoder', OneHotEncoder(handle_unknown='ignore'))
+        ('encoder', OneHotEncoder(handle_unknown='ignore',max_categories=10))
     ])
 
     preprocessor = ColumnTransformer([
@@ -97,6 +107,8 @@ def train_base_models(X, y, preprocessor):
         ),
 
         "Random Forest": RandomForestClassifier(
+            n_estimators=100,
+            max_depth=10,
             class_weight="balanced",
             random_state=42
         ),
@@ -108,6 +120,9 @@ def train_base_models(X, y, preprocessor):
         "XGBoost": XGBClassifier(
             use_label_encoder=False,
             eval_metric="logloss",
+            tree_method="hist",
+            max_depth=5,
+            n_estimators=100,
             random_state=42
         )
     }
@@ -212,8 +227,8 @@ MODEL_CONFIGS = {
     "Random Forest": {
         "model": RandomForestClassifier(class_weight="balanced", random_state=42),
         "params":{
-            "model__n_estimators":[100,200],
-            "model__max_depth":[None,10]
+            "model__n_estimators":[100,150],
+            "model__max_depth":[5,10]
         }
     },
 
@@ -230,7 +245,8 @@ MODEL_CONFIGS = {
         "params":{
             "model__n_estimators":[100,200],
             "model__learning_rate":[0.05,0.1],
-            "model__max_depth":[3,5]
+            "model__max_depth":[3,5],
+            "tree_method":"hist"
         }
     }
 }
@@ -261,12 +277,14 @@ def tune_top_models(X, y, preprocessor, base_results):
             ("model", config["model"])
         ])
 
-        grid_search = GridSearchCV(
+        grid_search = RandomizedSearchCV(
             pipeline,
             config["params"],
-            cv=5,
-            scoring="accuracy",
-            n_jobs=-1
+            n_iter=8,
+            cv=3,
+            scoring="roc_auc",
+            n_jobs=-1,
+            random_state=42
         )
 
         grid_search.fit(X_train, y_train)
@@ -299,7 +317,12 @@ def tune_top_models(X, y, preprocessor, base_results):
 # --------------------------------------------------
 def run_full_pipeline(df, target_column):
 
+    if len(df) > 50000:
+        df = df.sample(50000, random_state=42)
+
     X, y, cat_cols, num_cols = auto_clean_data(df, target_column)
+
+    problem_type = detect_problem_type(y)
 
     preprocessor = build_preprocessor(cat_cols, num_cols)
 
@@ -342,5 +365,7 @@ def run_full_pipeline(df, target_column):
 
         "X_test": X_test,
 
-        "y_test": y_test
+        "y_test": y_test,
+
+        "problem_type": problem_type
     }
