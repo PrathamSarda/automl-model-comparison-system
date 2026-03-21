@@ -1,42 +1,72 @@
-# AutoML Model Comparison System
+AutoML Model Comparison System
 
-An automated machine learning system that allows users to upload a dataset and automatically train multiple ML models, perform hyperparameter tuning, and compare model performance.
+An interactive AutoML web application that allows users to upload datasets, automatically preprocess data, train multiple machine learning models, perform hyperparameter tuning, and compare model performance.
 
-## Features
+🚀 Features
+Automatic dataset cleaning (missing values, ID removal)
+Automated preprocessing pipeline:
+Imputation
+Scaling
+One-hot encoding
+Trains multiple ML models automatically
+Hyperparameter tuning using RandomizedSearchCV
+Supports:
+Binary classification
+Multiclass classification
+Interactive visualizations:
+Model comparison chart
+Confusion matrix
+ROC curve (for binary classification)
+Feature importance
+Prediction interface with:
+Top important features
+Risk scoring (Low / Medium / High)
 
-- Automatic dataset cleaning
-- Automatic preprocessing pipeline
-- Model comparison across multiple ML algorithms
-- Hyperparameter tuning using GridSearchCV
-- Model evaluation using accuracy, F1-score, and ROC-AUC
-- Visualizations including:
-  - Model comparison chart
-  - Confusion matrix
-  - ROC curve
-  - Feature importance
 
-## Models Used
+🤖 Models Used
+Logistic Regression
+K-Nearest Neighbors (KNN)
+Decision Tree
+Random Forest
+Gradient Boosting
+XGBoost
 
-- Logistic Regression
-- KNN
-- Decision Tree
-- Random Forest
-- Gradient Boosting
-- XGBoost
 
-## Technologies
+🛠️ Technologies
+Python
+Scikit-learn
+XGBoost
+Streamlit
+Pandas
+NumPy
+Matplotlib
+Seaborn
 
-- Python
-- Scikit-learn
-- XGBoost
-- Streamlit
-- Pandas
-- Matplotlib
-- Seaborn
+📊 Workflow
 
-## How to Run
+Upload Dataset
+↓
+EDA Analysis
+↓
+Data Cleaning & Preprocessing
+↓
+Train 6 ML Models
+↓
+Select Top 3 Models
+↓
+Hyperparameter Tuning
+↓
+Model Comparison
+↓
+Best Model Selection
+↓
+Prediction & Risk Scoring
 
-Install dependencies:
 
-```bash
+▶️ How to Run Locally
+
+git clone https://github.com/PrathamSarda/automl-model-comparision-system.git
+cd automl-model-comparision-system
+
 pip install -r requirements.txt
+streamlit run app.py

@@ -120,7 +120,6 @@ def train_base_models(X, y, preprocessor):
         "XGBoost": XGBClassifier(
             use_label_encoder=False,
             eval_metric="logloss",
-            tree_method="hist",
             max_depth=5,
             n_estimators=100,
             random_state=42
@@ -245,8 +244,7 @@ MODEL_CONFIGS = {
         "params":{
             "model__n_estimators":[100,200],
             "model__learning_rate":[0.05,0.1],
-            "model__max_depth":[3,5],
-            "tree_method":"hist"
+            "model__max_depth":[3,5]
         }
     }
 }
