@@ -1,121 +1,334 @@
 import pandas as pd
 import numpy as np
 
-from sklearn.model_selection import train_test_split, RandomizedSearchCV
+from sklearn.model_selection import RandomizedSearchCV, train_test_split    
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
+from sklearn.pipeline import Pipeline
 
-from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 
 from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.tree import DecisionTreeClassifier
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 
 from xgboost import XGBClassifier
 
 
-# ------------------------------
-# Clean Data (FIXED)
-# ------------------------------
+# --------------------------------------------------
+# Data Cleaning
+# --------------------------------------------------
 def auto_clean_data(df, target_column):
 
     df = df.copy()
 
-    # Drop ID-like
-    df = df.loc[:, df.nunique() / len(df) < 0.95]
+    threshold = 0.95
+    n_rows = len(df)
 
-    # Drop high missing
-    df = df.loc[:, df.isnull().mean() < 0.5]
+    id_like_cols = [
+        col for col in df.columns
+        if df[col].nunique() / n_rows > threshold
+    ]
 
-    # Drop high cardinality
-    df = df.loc[:, df.nunique() < 100]
+    id_like_cols = [col for col in id_like_cols if col != target_column]
+
+    df.drop(columns=id_like_cols, inplace=True)
+
+    missing_percent = df.isnull().mean()
+    high_missing_cols = missing_percent[missing_percent > 0.5].index.tolist()
+
+    df.drop(columns=high_missing_cols, inplace=True)
 
     X = df.drop(columns=[target_column])
     y = df[target_column]
 
+    df = df.copy()
+
+# ---- Drop high-cardinality columns ----
+    high_card_cols = [
+        col for col in df.columns
+        if df[col].nunique() > 100
+    ]
+
+    # Do not drop target
+    high_card_cols = [col for col in high_card_cols if col != target_column]
+
+    df.drop(columns=high_card_cols, inplace=True)
+
+    # ---- Encode target if categorical ----
     if y.dtype == "object":
         y = y.astype("category").cat.codes
 
-    cat_cols = X.select_dtypes(include=["object"]).columns.tolist()
-    num_cols = X.select_dtypes(exclude=["object"]).columns.tolist()
+    categorical_cols = X.select_dtypes(include=['object', 'category']).columns.tolist()
+    numerical_cols = X.select_dtypes(exclude=['object', 'category']).columns.tolist()
 
-    return X, y, cat_cols, num_cols
+    return X, y, categorical_cols, numerical_cols
+#--------------------------------------------------
+# Detect problem type
+#--------------------------------------------------
+def detect_problem_type(y):
 
+    if y.nunique() == 2:
+        return "binary_classification"
+    elif y.nunique() > 2 and y.dtype in ['object', 'category']:
+        return "multiclass_classification"
+    else:
+        return "regression"
 
-# ------------------------------
-# Preprocessor
-# ------------------------------
-def build_preprocessor(cat_cols, num_cols):
+# --------------------------------------------------
+# Preprocessing Pipeline
+# --------------------------------------------------
+def build_preprocessor(categorical_cols, numerical_cols):
 
-    num_pipe = Pipeline([
-        ("imputer", SimpleImputer(strategy="median")),
-        ("scaler", StandardScaler())
+    numeric_pipeline = Pipeline([
+        ('imputer', SimpleImputer(strategy='median')),
+        ('scaler', StandardScaler())
     ])
 
-    cat_pipe = Pipeline([
-        ("imputer", SimpleImputer(strategy="most_frequent")),
-        ("encoder", OneHotEncoder(handle_unknown="ignore"))
+    categorical_pipeline = Pipeline([
+        ('imputer', SimpleImputer(strategy='most_frequent')),
+        ('encoder', OneHotEncoder(handle_unknown='ignore',max_categories=10))
     ])
 
-    return ColumnTransformer([
-        ("num", num_pipe, num_cols),
-        ("cat", cat_pipe, cat_cols)
+    preprocessor = ColumnTransformer([
+        ('num', numeric_pipeline, numerical_cols),
+        ('cat', categorical_pipeline, categorical_cols)
     ])
 
+    return preprocessor
 
-# ------------------------------
-# Train Models
-# ------------------------------
-def train_models(X, y, preprocessor):
+
+# --------------------------------------------------
+# Base Models
+# --------------------------------------------------
+def train_base_models(X, y, preprocessor):
 
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
+        X, y,
+        test_size=0.2,
+        random_state=42,
+        stratify=y
     )
 
     models = {
-        "LogReg": LogisticRegression(max_iter=1000),
-        "RF": RandomForestClassifier(),
-        "DT": DecisionTreeClassifier(),
+
+        "Logistic Regression": LogisticRegression(max_iter=1000, class_weight="balanced"),
+
         "KNN": KNeighborsClassifier(),
-        "GB": GradientBoostingClassifier(),
-        "XGB": XGBClassifier(eval_metric="logloss")
+
+        "Decision Tree": DecisionTreeClassifier(
+            class_weight="balanced",
+            random_state=42
+        ),
+
+        "Random Forest": RandomForestClassifier(
+            n_estimators=100,
+            max_depth=10,
+            class_weight="balanced",
+            random_state=42
+        ),
+
+        "Gradient Boosting": GradientBoostingClassifier(
+            random_state=42
+        ),
+
+        "XGBoost": XGBClassifier(
+            eval_metric="logloss",
+            max_depth=5,
+            n_estimators=100,
+            random_state=42
+        )
     }
 
     results = []
 
     for name, model in models.items():
 
-        pipe = Pipeline([
+        pipeline = Pipeline([
             ("preprocessing", preprocessor),
             ("model", model)
         ])
 
-        pipe.fit(X_train, y_train)
-        y_pred = pipe.predict(X_test)
+        pipeline.fit(X_train, y_train)
 
+        y_pred = pipeline.predict(X_test)
+
+        # probability safe
         try:
-            y_prob = pipe.predict_proba(X_test)
-            roc = roc_auc_score(y_test, y_prob[:, 1])
+            y_prob = pipeline.predict_proba(X_test)
         except:
-            roc = np.nan
+            y_prob = None
+
+        # ROC-AUC safe
+        try:
+            if y_prob is not None:
+
+                if len(np.unique(y_test)) == 2:
+                    roc_auc = roc_auc_score(y_test, y_prob[:,1])
+
+                else:
+                    roc_auc = roc_auc_score(
+                        y_test,
+                        y_prob,
+                        multi_class="ovr"
+                    )
+            else:
+                roc_auc = np.nan
+
+        except:
+            roc_auc = np.nan
+
 
         results.append({
+
             "Model": name,
+
             "Accuracy": accuracy_score(y_test, y_pred),
-            "F1": f1_score(y_test, y_pred, average="weighted"),
-            "ROC-AUC": roc
+
+            "Precision": precision_score(
+                y_test,
+                y_pred,
+                average="weighted",
+                zero_division=0
+            ),
+
+            "Recall": recall_score(
+                y_test,
+                y_pred,
+                average="weighted",
+                zero_division=0
+            ),
+
+            "F1": f1_score(
+                y_test,
+                y_pred,
+                average="weighted",
+                zero_division=0
+            ),
+
+            "ROC-AUC": roc_auc
         })
 
-    return pd.DataFrame(results).sort_values(by="ROC-AUC", ascending=False), X_test, y_test
+    results_df = pd.DataFrame(results)
+
+    return results_df.sort_values(by="ROC-AUC", ascending=False)
 
 
-# ------------------------------
+# --------------------------------------------------
+# Model Configurations
+# --------------------------------------------------
+MODEL_CONFIGS = {
+
+    "Logistic Regression": {
+        "model": LogisticRegression(max_iter=1000, class_weight="balanced"),
+        "params": {"model__C": [0.1, 1, 10]}
+    },
+
+    "KNN": {
+        "model": KNeighborsClassifier(),
+        "params": {"model__n_neighbors": [3,5,7]}
+    },
+
+    "Decision Tree": {
+        "model": DecisionTreeClassifier(class_weight="balanced", random_state=42),
+        "params": {
+            "model__max_depth":[None,10,20],
+            "model__min_samples_split":[2,5]
+        }
+    },
+
+    "Random Forest": {
+        "model": RandomForestClassifier(class_weight="balanced", random_state=42),
+        "params":{
+            "model__n_estimators":[100,150],
+            "model__max_depth":[5,10]
+        }
+    },
+
+    "Gradient Boosting": {
+        "model": GradientBoostingClassifier(random_state=42),
+        "params":{
+            "model__n_estimators":[100,200],
+            "model__learning_rate":[0.05,0.1]
+        }
+    },
+
+    "XGBoost": {
+        "model": XGBClassifier(use_label_encoder=False, eval_metric="logloss", random_state=42),
+        "params":{
+            "model__n_estimators":[100,200],
+            "model__learning_rate":[0.05,0.1],
+            "model__max_depth":[3,5]
+        }
+    }
+}
+
+
+# --------------------------------------------------
+# Hyperparameter Tuning
+# --------------------------------------------------
+def tune_top_models(X, y, preprocessor, base_results):
+
+    top_models = base_results["Model"].head(3).tolist()
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y,
+        test_size=0.2,
+        random_state=42,
+        stratify=y
+    )
+
+    tuned_results = []
+
+    for model_name in top_models:
+
+        config = MODEL_CONFIGS[model_name]
+
+        pipeline = Pipeline([
+            ("preprocessing", preprocessor),
+            ("model", config["model"])
+        ])
+
+        grid_search = RandomizedSearchCV(
+            pipeline,
+            config["params"],
+            n_iter=4,
+            cv=3,
+            scoring="roc_auc",
+            n_jobs=-1,
+            random_state=42
+        )
+
+        grid_search.fit(X_train, y_train)
+
+        best_model = grid_search.best_estimator_
+
+        y_pred = best_model.predict(X_test)
+
+        tuned_results.append({
+
+            "Model": model_name,
+
+            "Best Params": grid_search.best_params_,
+
+            "Accuracy": accuracy_score(y_test, y_pred),
+
+            "F1": f1_score(
+                y_test,
+                y_pred,
+                average="weighted",
+                zero_division=0
+            )
+        })
+
+    return pd.DataFrame(tuned_results).sort_values(by="Accuracy", ascending=False)
+
+
+# --------------------------------------------------
 # Main Pipeline
-# ------------------------------
+# --------------------------------------------------
 def run_full_pipeline(df, target_column):
 
     if len(df) > 50000:
@@ -123,33 +336,50 @@ def run_full_pipeline(df, target_column):
 
     X, y, cat_cols, num_cols = auto_clean_data(df, target_column)
 
+    problem_type = detect_problem_type(y)
+
     preprocessor = build_preprocessor(cat_cols, num_cols)
 
-    results, X_test, y_test = train_models(X, y, preprocessor)
+    base_results = train_base_models(X, y, preprocessor)
 
-    best_model_name = results.iloc[0]["Model"]
+    tuned_results = tune_top_models(
+        X,
+        y,
+        preprocessor,
+        base_results
+    )
 
-    model_map = {
-        "LogReg": LogisticRegression(max_iter=1000),
-        "RF": RandomForestClassifier(),
-        "DT": DecisionTreeClassifier(),
-        "KNN": KNeighborsClassifier(),
-        "GB": GradientBoostingClassifier(),
-        "XGB": XGBClassifier(eval_metric="logloss")
-    }
+    best_model_name = tuned_results.iloc[0]["Model"]
 
-    final_model = Pipeline([
+    best_config = MODEL_CONFIGS[best_model_name]
+
+    final_pipeline = Pipeline([
         ("preprocessing", preprocessor),
-        ("model", model_map[best_model_name])
+        ("model", best_config["model"])
     ])
 
-    final_model.fit(X, y)
+    final_pipeline.fit(X, y)
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y,
+        test_size=0.2,
+        random_state=42,
+        stratify=y
+    )
 
     return {
-        "base_results": results,
-        "tuned_results": results,
-        "best_model": final_model,
+
+        "base_results": base_results,
+
+        "tuned_results": tuned_results,
+
+        "best_model": final_pipeline,
+
+        "best_model_name": best_model_name,
+
         "X_test": X_test,
+
         "y_test": y_test,
-        "problem_type": "classification"
+
+        "problem_type": problem_type
     }
