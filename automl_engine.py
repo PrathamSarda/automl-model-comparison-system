@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-
+import time
 from sklearn.model_selection import RandomizedSearchCV, train_test_split    
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.compose import ColumnTransformer
@@ -103,7 +103,7 @@ def build_preprocessor(categorical_cols, numerical_cols):
 # Base Models
 # --------------------------------------------------
 def train_base_models(X, y, preprocessor):
-
+    start=time.time()
     X_train, X_test, y_train, y_test = train_test_split(
         X, y,
         test_size=0.2,
@@ -255,7 +255,7 @@ MODEL_CONFIGS = {
     },
 
     "XGBoost": {
-        "model": XGBClassifier(eval_metric="logloss", random_state=42),
+        "model": XGBClassifier(eval_metric="logloss",n_jobs=1, random_state=42),
         "params":{
             "model__n_estimators":[100,200],
             "model__learning_rate":[0.05,0.1],
@@ -269,7 +269,7 @@ MODEL_CONFIGS = {
 # Hyperparameter Tuning
 # --------------------------------------------------
 def tune_top_models(X, y, preprocessor, base_results):
-
+    start=time.time()
     top_models = base_results["Model"].head(3).tolist()
 
     X_train, X_test, y_train, y_test = train_test_split(
@@ -296,7 +296,7 @@ def tune_top_models(X, y, preprocessor, base_results):
             n_iter=4,
             cv=3,
             scoring="roc_auc",
-            n_jobs=-1,
+            n_jobs=1,
             random_state=42
         )
 
@@ -329,7 +329,7 @@ def tune_top_models(X, y, preprocessor, base_results):
 # Main Pipeline
 # --------------------------------------------------
 def run_full_pipeline(df, target_column):
-
+    start_total=time.time()
     if len(df) > 50000:
         df = df.sample(50000, random_state=42)
 

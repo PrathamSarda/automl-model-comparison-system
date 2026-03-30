@@ -401,3 +401,6 @@ if uploaded_file is not None:
                     risk = "High Risk"
 
                 st.write("Risk Level:", risk)
+        start = time.time()
+        results = run_full_pipeline(df, target)
+        st.write(f"⏱ Total time: {time.time() - start:.2f} sec")
