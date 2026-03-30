@@ -44,7 +44,6 @@ def auto_clean_data(df, target_column):
     X = df.drop(columns=[target_column])
     y = df[target_column]
 
-    df = df.copy()
 
 # ---- Drop high-cardinality columns ----
     high_card_cols = [
@@ -155,13 +154,13 @@ def train_base_models(X, y, preprocessor):
 
         y_pred = pipeline.predict(X_test)
 
-        # probability safe
+        # probability 
         try:
             y_prob = pipeline.predict_proba(X_test)
         except:
             y_prob = None
 
-        # ROC-AUC safe
+        # ROC-AUC 
         try:
             if y_prob is not None:
 
@@ -256,7 +255,7 @@ MODEL_CONFIGS = {
     },
 
     "XGBoost": {
-        "model": XGBClassifier(use_label_encoder=False, eval_metric="logloss", random_state=42),
+        "model": XGBClassifier(eval_metric="logloss", random_state=42),
         "params":{
             "model__n_estimators":[100,200],
             "model__learning_rate":[0.05,0.1],
